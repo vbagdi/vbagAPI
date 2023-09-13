@@ -2,13 +2,12 @@ import { Router, Request, Response } from "express";
 
 import Constants from "../../constants.js";
 import { verifyJwt } from "../../middleware/verify-jwt.js";
-
 import { JwtPayload } from "../auth/auth-models.js";
 import { generateJwtToken, getJwtPayloadFromDB, hasElevatedPerms } from "../auth/auth-lib.js";
 
 import { UserSchema } from "./user-schemas.js";
 import { UserFormat } from "./user-formats.js";
-import { getUser, updateUser } from "./user-lib.js";
+import { getUser, updateUser,encodeToken,decodeToken } from "./user-lib.js";
 
 const userRouter: Router = Router();
 
@@ -239,4 +238,109 @@ userRouter.post("/", verifyJwt, async (req: Request, res: Response) => {
 });
 
 
+/**
+ * @api {post} /user/encode POST /user/encode
+ * @apiGroup User
+ * @apiDescription Encode user and data into a token string.
+ *
+ * @apiParam {String} user User identifier.
+ * @apiParam {Object} data Data to be encoded.
+ *
+ * @apiParamExample Example Request:
+ * {
+ *   "user": "john_doe",
+ *   "data": {
+ *     "role": "admin",
+ *     "access_level": 5
+ *   }
+ * }
+ *
+ * @apiSuccess (200: Success) {String} token Encoded token.
+ * @apiSuccess (200: Success) {Object} context Additional context data (optional).
+ *
+ * @apiSuccessExample Example Success Response:
+ * HTTP/1.1 200 OK
+ * {
+ *   "token": "lorem ipsumdolorsitelet",
+ *   "context": {
+ *     "additional_info": "Some extra data"
+ *   }
+ * }
+ */
+userRouter.post("/encode", (req: Request, res: Response) => {
+	interface RequestBody {
+		user: string;
+		data: JSON;
+	}
+	const { user, data } = req.body as RequestBody;
+  
+	if (!user || !data) {
+		res.status(Constants.BAD_REQUEST).send("Invalid parameters");
+		return;
+	}
+  
+	const secretKey:string = "123456";
+	const encodedTokenResponse: string = encodeToken(user, data, secretKey).token;
+  
+	res.status(Constants.SUCCESS).json(encodedTokenResponse);
+});
+  
+/**
+   * @api {post} /user/decode POST /user/decode
+   * @apiGroup User
+   * @apiDescription Decode an encoded token to reveal user and data information.
+   *
+   * @apiParam {String} token Encoded token to decode.
+   * @apiParam {Object} context JSON object received from the encode endpoint (optional).
+   *
+   * @apiParamExample Example Request:
+   * {
+   *   "token": "lorem ipsumdolorsitelet",
+   *   "context": {
+   *     "additional_info": "Some extra data"
+   *   }
+   * }
+   *
+   * @apiSuccess (200: Success) {String} user User identifier.
+   * @apiSuccess (200: Success) {Object} data Data associated with the user.
+   *
+   * @apiSuccessExample Example Success Response:
+   * HTTP/1.1 200 OK
+   * {
+   *   "user": "john_doe",
+   *   "data": {
+   *     "role": "admin",
+   *     "access_level": 5
+   *   }
+   * }
+   */
+userRouter.post("/decode", (req: Request, res: Response) => {
+	interface RequestBody {
+		token: string;
+		context: object;
+	}
+	const { token, context } = req.body as RequestBody;
+	if (!token || !context) {
+		return res.status(Constants.BAD_REQUEST).send("Token is required");
+	}
+	
+	const secretKey:string = "123456";
+	
+	try {
+		interface Decode {
+			user: string;
+			data: JSON;
+			context?: object;
+		}
+		const decodedResponse:Decode = decodeToken(token, secretKey);
+		
+		res.status(Constants.SUCCESS).json(decodedResponse);
+		return decodedResponse;
+	} catch (error) {
+		return res.status(Constants.UNAUTHORIZED_REQUEST).send("Invalid token");
+	}
+});
+  
+// Rest of your user router code...
+  
 export default userRouter;
