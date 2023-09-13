@@ -2,6 +2,7 @@ import { Collection, UpdateFilter } from "mongodb";
 import { UserSchema } from "./user-schemas.js";
 import DatabaseHelper from "../../database.js";
 import { UserFormat } from "./user-formats.js";
+import crypto from "crypto";
 
 
 /**
@@ -49,3 +50,54 @@ export async function updateUser(userData: UserFormat): Promise<void> {
 
 	return Promise.resolve();
 }
+
+/**
+ * Function to encode user and data into a token.
+ * @param user User identifier.
+ * @param data Data to be encoded.
+ * @param secretKey Secret key for encoding.
+ * @returns Encoded token and context (optional).
+ */
+export function encodeToken(user: string, data: JSON, secretKey: string): { token: string, context?: object } {
+	const payload: { user: string; data: JSON } = { user, data };
+  
+	const encodedPayload: string = Buffer.from(JSON.stringify(payload)).toString("base64");
+	const signature: string = crypto.createHmac("sha256", secretKey).update(encodedPayload).digest("base64");
+  
+	const token: string = `${encodedPayload}.${signature}`;
+  
+	return { token };
+}
+  
+
+
+/**
+ * Function to decode an encoded token.
+ * @param token Encoded token to decode.
+ * @param secretKey Secret key for decoding.
+ * @returns Decoded user and data with context (optional).
+ */
+export function decodeToken(token: string, secretKey: string): { user: string, data: JSON, context?: object } {
+	const [ encodedPayload, signature ] = token.split(".");
+	
+	if (!encodedPayload || !signature) {
+		throw new Error("Invalid token format");
+	}
+  
+	const expectedSignature: string = crypto.createHmac("sha256", secretKey).update(encodedPayload).digest("base64");
+  
+	if (signature !== expectedSignature) {
+		throw new Error("Invalid token");
+	}
+	interface Payload {
+		user: string;
+		data: JSON;
+		context?: object;
+	}
+	const payload: Payload = JSON.parse(Buffer.from(encodedPayload, "base64").toString()) as Payload;
+  
+	return payload;
+}
+  
+
+  
